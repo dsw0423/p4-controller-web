@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Index</title>
+</head>
+
+<body>
+    <div id="app">
+        <p v-if="refreshToken">主页面，展示数据面信息</p>
+        <p v-else>未登录，{{ count }} 秒后跳转到登录页面...</p>
+    </div>
+
+    <script type="module">
+        import { createApp, ref } from './vue.esm-browser.js';
+        import { gotoLogin, checkAuth } from './login.js';
+
+
+        const app = createApp({
+            setup() {
+                const accessToken = localStorage.getItem('accessToken');
+                const refreshToken = ref(localStorage.getItem('refreshToken'));
+                const count = ref(2);
+
+                if (refreshToken.value !== null) {
+                    checkAuth(refreshToken.value)
+                        .then(res => {
+                            const response = res.response;
+                            if (response.hasOwnProperty('accessToken')) {
+                                localStorage.setItem('accessToken', response.accessToken);
+                                console.log('accessToken:', response.accessToken);
+                            }
+
+                            if (response.hasOwnProperty('refreshToken')) {
+                                localStorage.setItem('refreshToken', response.refreshToken);
+                                console.log('refreshToken:', response.refreshToken);
+                            }
+                            refreshToken.value = localStorage.getItem('refreshToken');
+                            console.log('refreshToken:', refreshToken.value);
+                        })
+                        .catch(err => {
+                            console.log(err.error);
+                            localStorage.removeItem('refreshToken');
+                            localStorage.removeItem('accessToken');
+                            refreshToken.value = null;
+                            count.value = 2;
+                            gotoLogin(count);
+                        });
+                } else {
+                    gotoLogin(count);
+                }
+
+                return {
+                    count,
+                    refreshToken
+                };
+            }
+        });
+
+        app.mount('#app');
+    </script>
+</body>
+
+</html>
