@@ -105,7 +105,7 @@
 
 <script type="module">
     import { createApp, ref } from './vue.esm-browser.js';
-    import { checkAuth } from './login.js';
+    import { checkAuth, serverAddr } from './login.js';
 
     const app = createApp({
         setup() {
@@ -133,7 +133,7 @@
                 console.log('提交的登录数据：', loginDataJson);
 
                 const xhr = new XMLHttpRequest();
-                xhr.open('POST', 'http://10.129.254.190:8080/login', true);
+                xhr.open('POST', serverAddr + '/login', true);
                 xhr.setRequestHeader('Content-Type', 'application/json');
                 xhr.onreadystatechange = () => {
                     if (xhr.readyState === 4) {

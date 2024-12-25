@@ -1,3 +1,5 @@
+const serverAddr = 'http://10.129.254.190:8080';
+
 const gotoLogin = (count) => {
     if (!('value' in count)) {
         console.error('argument must have a property: value');
@@ -23,7 +25,7 @@ const checkAuth = (refreshToken) => {
 
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
-        xhr.open('POST', 'http://10.129.254.190:8080/refreshToken', true);
+        xhr.open('POST', serverAddr + '/refreshToken', true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.onreadystatechange = () => {
             if (xhr.readyState === 4) {
@@ -53,4 +55,4 @@ const checkAuth = (refreshToken) => {
     });
 };
 
-export { gotoLogin, checkAuth };
+export { gotoLogin, checkAuth, serverAddr };
