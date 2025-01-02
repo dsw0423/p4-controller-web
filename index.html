@@ -9,20 +9,30 @@
 
 <body>
     <div id="app">
-        <p v-if="refreshToken">主页面，展示数据面信息</p>
-        <p v-else>未登录，{{ count }} 秒后跳转到登录页面...</p>
+        <div v-if="refreshToken">
+            <p>下发p4info及bin文件</p> <br>
+            <form @submit.prevent="distributeP4Artifacts">
+                p4info: <input type="file" @change="handleP4infoChange" /> <br>
+                bin: <input type="file" @change="handleBinChange" /> <br>
+                <button type="submit">提交</button> <br>
+                <div>{{ distributeMsg }}</div>
+            </form>
+        </div>
+        <div v-else>未登录，{{ count }} 秒后跳转到登录页面...</div>
     </div>
 
     <script type="module">
         import { createApp, ref } from './vue.esm-browser.js';
-        import { gotoLogin, checkAuth } from './login.js';
+        import { gotoLogin, checkAuth, serverAddr } from './login.js';
 
 
         const app = createApp({
             setup() {
-                const accessToken = localStorage.getItem('accessToken');
                 const refreshToken = ref(localStorage.getItem('refreshToken'));
                 const count = ref(2);
+                const p4info = ref(null);
+                const bin = ref(null);
+                const distributeMsg = ref('');
 
                 if (refreshToken.value !== null) {
                     checkAuth(refreshToken.value)
@@ -52,9 +62,59 @@
                     gotoLogin(count);
                 }
 
+                const handleP4infoChange = (e) => {
+                    p4info.value = e.target.files[0];
+                };
+
+                const handleBinChange = (e) => {
+                    bin.value = e.target.files[0];
+                };
+
+                const distributeP4Artifacts = () => {
+                    if (!p4info.value || !bin.value) {
+                        distributeMsg.value = '未选定P4info或bin文件!';
+                        return;
+                    }
+                    distributeMsg.value = '正在下发...';
+
+                    const formData = new FormData();
+                    formData.append('p4info', p4info.value);
+                    formData.append('bin', bin.value);
+
+                    /* TODO: add accessToken check and update */
+                    let accessToken = localStorage.getItem('accessToken');
+
+                    fetch(serverAddr + '/auth/pipeconf', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${accessToken}`
+                        },
+                        body: formData
+                    })
+                        .then(res => {
+                            if (res.ok) {
+                                distributeMsg.value = '下发成功!';
+                            } else {
+                                distributeMsg.value = '下发失败!';
+                            }
+                            return res.json();
+                        })
+                        .then(data => {
+                            console.log(data.msg);
+                        })
+                        .catch(err => {
+                            console.log(err);
+                            distributeMsg.value = '下发失败!';
+                        });
+                };
+
                 return {
                     count,
-                    refreshToken
+                    refreshToken,
+                    handleP4infoChange,
+                    handleBinChange,
+                    distributeP4Artifacts,
+                    distributeMsg
                 };
             }
         });
