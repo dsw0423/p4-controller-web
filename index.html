@@ -34,33 +34,48 @@
                 const bin = ref(null);
                 const distributeMsg = ref('');
 
-                if (refreshToken.value !== null) {
-                    checkAuth(refreshToken.value)
-                        .then(res => {
-                            const response = res.response;
-                            if (response.hasOwnProperty('accessToken')) {
-                                localStorage.setItem('accessToken', response.accessToken);
-                                console.log('accessToken:', response.accessToken);
-                            }
+                const checkTokens = () => {
+                    return new Promise((resolve, reject) => {
+                        if (refreshToken.value !== null) {
+                            checkAuth(refreshToken.value)
+                                .then(res => {
+                                    const response = res.response;
+                                    if (response.hasOwnProperty('accessToken')) {
+                                        localStorage.setItem('accessToken', response.accessToken);
+                                        console.log('accessToken:', response.accessToken);
+                                    }
 
-                            if (response.hasOwnProperty('refreshToken')) {
-                                localStorage.setItem('refreshToken', response.refreshToken);
-                                console.log('refreshToken:', response.refreshToken);
-                            }
-                            refreshToken.value = localStorage.getItem('refreshToken');
-                            console.log('refreshToken:', refreshToken.value);
-                        })
-                        .catch(err => {
-                            console.log(err.error);
-                            localStorage.removeItem('refreshToken');
-                            localStorage.removeItem('accessToken');
-                            refreshToken.value = null;
-                            count.value = 2;
+                                    if (response.hasOwnProperty('refreshToken')) {
+                                        localStorage.setItem('refreshToken', response.refreshToken);
+                                        console.log('refreshToken:', response.refreshToken);
+                                    }
+                                    refreshToken.value = localStorage.getItem('refreshToken');
+                                    console.log('refreshToken:', refreshToken.value);
+                                    resolve(true);
+                                })
+                                .catch(err => {
+                                    console.log(err.error);
+                                    localStorage.removeItem('refreshToken');
+                                    localStorage.removeItem('accessToken');
+                                    refreshToken.value = null;
+                                    count.value = 2;
+                                    gotoLogin(count);
+                                    reject(false);
+                                });
+                        } else {
                             gotoLogin(count);
-                        });
-                } else {
-                    gotoLogin(count);
-                }
+                            reject(false);
+                        }
+                    });
+                };
+
+                checkTokens()
+                    .then(() => {
+                        console.log('tokens refresh ok.');
+                    })
+                    .catch(() => {
+                        console.log('tokens refresh failed.');
+                    });
 
                 const handleP4infoChange = (e) => {
                     p4info.value = e.target.files[0];
@@ -81,7 +96,6 @@
                     formData.append('p4info', p4info.value);
                     formData.append('bin', bin.value);
 
-                    /* TODO: add accessToken check and update */
                     let accessToken = localStorage.getItem('accessToken');
 
                     fetch(serverAddr + '/auth/pipeconf', {
@@ -92,10 +106,24 @@
                         body: formData
                     })
                         .then(res => {
-                            if (res.ok) {
-                                distributeMsg.value = '下发成功!';
-                            } else {
-                                distributeMsg.value = '下发失败!';
+                            switch (res.status) {
+                                case 200:
+                                case 201:
+                                    distributeMsg.value = '下发成功!';
+                                    break;
+                                case 401:
+                                    checkTokens()
+                                        .then(() => {
+                                            console.log('tokens refresh ok.');
+                                            distributeP4Artifacts();
+                                        })
+                                        .catch(() => {
+                                            console.log('tokens refresh failed.');
+                                        });
+                                    break;
+                                default:
+                                    distributeMsg.value = `下发失败! ${res.status}`;
+
                             }
                             return res.json();
                         })
