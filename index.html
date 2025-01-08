@@ -4,21 +4,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Index</title>
+    <title>P4 Controller</title>
+    <link href="./bootstrap.min.css" rel="stylesheet">
+    <style>
+        .upload-form {
+            max-width: 500px;
+            margin: 2rem auto;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .file-input-wrapper {
+            margin: 1rem 0;
+        }
+    </style>
 </head>
 
-<body>
-    <div id="app">
+<body class="bg-light">
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <span class="navbar-brand">P4 Controller</span>
+        </div>
+    </nav>
+
+    <div id="app" class="container mt-4">
         <div v-if="refreshToken">
-            <p>下发p4info及bin文件</p> <br>
-            <form @submit.prevent="distributeP4Artifacts">
-                p4info: <input type="file" @change="handleP4infoChange" /> <br>
-                bin: <input type="file" @change="handleBinChange" /> <br>
-                <button type="submit">提交</button> <br>
-                <div>{{ distributeMsg }}</div>
+            <form @submit.prevent="distributeP4Artifacts" class="upload-form bg-white">
+                <h2 class="mb-4">配置文件下发</h2>
+
+                <div class="file-input-wrapper">
+                    <label class="form-label">P4Info 文件</label>
+                    <input class="form-control" type="file" @change="handleP4infoChange">
+                </div>
+
+                <div class="file-input-wrapper">
+                    <label class="form-label">Bin 文件</label>
+                    <input class="form-control" type="file" @change="handleBinChange">
+                </div>
+
+                <button type="submit" class="btn btn-primary w-100 mt-3">
+                    <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+                    提交
+                </button>
+
+                <div class="alert" :class="distributeMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                    v-if="distributeMsg" role="alert">
+                    {{ distributeMsg }}
+                </div>
             </form>
         </div>
-        <div v-else>未登录，{{ count }} 秒后跳转到登录页面...</div>
+
+        <div v-else class="text-center mt-5">
+            <div class="alert alert-warning" role="alert">
+                <i class="bi bi-exclamation-triangle me-2"></i>
+                未登录，{{ count }} 秒后跳转到登录页面...
+            </div>
+        </div>
     </div>
 
     <script type="module">
@@ -33,6 +75,7 @@
                 const p4info = ref(null);
                 const bin = ref(null);
                 const distributeMsg = ref('');
+                const isLoading = ref(false);
 
                 const checkTokens = () => {
                     return new Promise((resolve, reject) => {
@@ -85,55 +128,60 @@
                     bin.value = e.target.files[0];
                 };
 
-                const distributeP4Artifacts = () => {
-                    if (!p4info.value || !bin.value) {
-                        distributeMsg.value = '未选定P4info或bin文件!';
-                        return;
+                const distributeP4Artifacts = async () => {
+                    isLoading.value = true;
+                    try {
+                        if (!p4info.value || !bin.value) {
+                            distributeMsg.value = '未选定P4info或bin文件!';
+                            return;
+                        }
+                        distributeMsg.value = '正在下发...';
+
+                        const formData = new FormData();
+                        formData.append('p4info', p4info.value);
+                        formData.append('bin', bin.value);
+
+                        let accessToken = localStorage.getItem('accessToken');
+
+                        fetch(serverAddr + '/auth/pipeconf', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            },
+                            body: formData
+                        })
+                            .then(res => {
+                                switch (res.status) {
+                                    case 200:
+                                    case 201:
+                                        distributeMsg.value = '下发成功!';
+                                        break;
+                                    case 401:
+                                        checkTokens()
+                                            .then(() => {
+                                                console.log('tokens refresh ok.');
+                                                distributeP4Artifacts();
+                                            })
+                                            .catch(() => {
+                                                console.log('tokens refresh failed.');
+                                            });
+                                        break;
+                                    default:
+                                        distributeMsg.value = `下发失败! ${res.status}`;
+
+                                }
+                                return res.json();
+                            })
+                            .then(data => {
+                                console.log(data.msg);
+                            })
+                            .catch(err => {
+                                console.log(err);
+                                distributeMsg.value = '下发失败!';
+                            });
+                    } finally {
+                        isLoading.value = false;
                     }
-                    distributeMsg.value = '正在下发...';
-
-                    const formData = new FormData();
-                    formData.append('p4info', p4info.value);
-                    formData.append('bin', bin.value);
-
-                    let accessToken = localStorage.getItem('accessToken');
-
-                    fetch(serverAddr + '/auth/pipeconf', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        },
-                        body: formData
-                    })
-                        .then(res => {
-                            switch (res.status) {
-                                case 200:
-                                case 201:
-                                    distributeMsg.value = '下发成功!';
-                                    break;
-                                case 401:
-                                    checkTokens()
-                                        .then(() => {
-                                            console.log('tokens refresh ok.');
-                                            distributeP4Artifacts();
-                                        })
-                                        .catch(() => {
-                                            console.log('tokens refresh failed.');
-                                        });
-                                    break;
-                                default:
-                                    distributeMsg.value = `下发失败! ${res.status}`;
-
-                            }
-                            return res.json();
-                        })
-                        .then(data => {
-                            console.log(data.msg);
-                        })
-                        .catch(err => {
-                            console.log(err);
-                            distributeMsg.value = '下发失败!';
-                        });
                 };
 
                 return {
@@ -142,7 +190,8 @@
                     handleP4infoChange,
                     handleBinChange,
                     distributeP4Artifacts,
-                    distributeMsg
+                    distributeMsg,
+                    isLoading
                 };
             }
         });
