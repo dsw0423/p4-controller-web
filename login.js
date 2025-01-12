@@ -1,4 +1,4 @@
-const serverAddr = 'http://192.168.80.156:8080';
+const serverAddr = 'http://10.129.254.190:8080';
 
 const gotoLogin = (count) => {
     if (!('value' in count)) {

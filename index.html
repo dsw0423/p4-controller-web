@@ -18,6 +18,51 @@
         .file-input-wrapper {
             margin: 1rem 0;
         }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            background: #f8f9fa;
+            margin: 5px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        li:hover {
+            background: #e9ecef;
+        }
+
+        .table-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .table-alias {
+            color: #6c757d;
+        }
+
+        .dropdown {
+            margin-top: 10px;
+            background: #f1f3f5;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .table-header {
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .table-header:hover {
+            background-color: #f5f5f5;
+        }
     </style>
 </head>
 
@@ -53,6 +98,71 @@
                     {{ distributeMsg }}
                 </div>
             </form>
+
+            <h1>Table 列表展示</h1>
+            <div v-if="p4infoJson && p4infoJson.tables.length > 0">
+                <ul>
+                    <li v-for="(table, index) in p4infoJson.tables" :key="index">
+                        <div class="table-header" @click="toggleDropdown(index)">
+                            <span class="table-name">{{ table.preamble.name }}</span>
+                            <span class="table-alias">({{ table.preamble.alias }})</span>
+                        </div>
+                        <!-- 下拉框 -->
+                        <div v-if="expandedIndexes.includes(index)" class="dropdown">
+                            <p><strong>表ID:</strong> {{ table.preamble.id }}</p>
+                            <p><strong>匹配字段:</strong></p>
+                            <ul>
+                                <li v-for="(field, fIndex) in table.match_fields" :key="fIndex">
+                                    {{ field.name }} ({{ field.match_type }}, 位宽: {{ field.bitwidth }})
+                                </li>
+                            </ul>
+                            <p><strong>表大小:</strong> {{ table.size }}</p>
+
+                            <!-- 新增表项表单 -->
+                            <form @submit.prevent="submitTableEntry(table.preamble.id)">
+                                <div class="mb-3">
+                                    <label class="form-label">匹配字段值:</label>
+                                    <div v-for="field in table.match_fields" :key="field.name" class="mb-2">
+                                        <label class="form-label">{{ field.name }}:</label>
+                                        <input type="text" class="form-control" v-model="tableEntryData[field.name]"
+                                            required>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">选择Action:</label>
+                                    <select class="form-select" v-model="selectedAction" @change="handleActionChange">
+                                        <option value="">请选择Action</option>
+                                        <option v-for="action in table.action_refs" :key="action.id" :value="action.id">
+                                            {{ getActionName(action.id) }}
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <div v-if="selectedAction" class="mb-3">
+                                    <label class="form-label">Action参数:</label>
+                                    <div v-for="param in getActionParams(selectedAction)" :key="param.name"
+                                        class="mb-2">
+                                        <label class="form-label">{{ param.name }} (位宽: {{ param.bitwidth }}):</label>
+                                        <input type="text" class="form-control" v-model="actionParams[param.name]"
+                                            required>
+                                    </div>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary">添加表项</button>
+                                <div class="alert"
+                                    :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                                    v-if="insertTableEntryMsg" role="alert">
+                                    {{ insertTableEntryMsg }}
+                                </div>
+                            </form>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+            <div v-else>
+                <p>没有找到任何表。</p>
+            </div>
         </div>
 
         <div v-else class="text-center mt-5">
@@ -66,6 +176,7 @@
     <script type="module">
         import { createApp, ref } from './vue.esm-browser.js';
         import { gotoLogin, checkAuth, serverAddr } from './login.js';
+        import { parseP4InfoText } from './utils.js';
 
 
         const app = createApp({
@@ -76,6 +187,12 @@
                 const bin = ref(null);
                 const distributeMsg = ref('');
                 const isLoading = ref(false);
+                const p4infoJson = ref(null);
+                const expandedIndexes = ref([]);
+                const selectedAction = ref('');
+                const tableEntryData = ref({});
+                const actionParams = ref({});
+                const insertTableEntryMsg = ref('');
 
                 const checkTokens = () => {
                     return new Promise((resolve, reject) => {
@@ -122,6 +239,7 @@
 
                 const handleP4infoChange = (e) => {
                     p4info.value = e.target.files[0];
+                    p4InfoFileToJson(p4info.value);
                 };
 
                 const handleBinChange = (e) => {
@@ -184,6 +302,97 @@
                     }
                 };
 
+                const toggleDropdown = (index) => {
+                    const i = expandedIndexes.value.indexOf(index);
+                    if (i > -1) {
+                        expandedIndexes.value.splice(i, 1);
+                    } else {
+                        expandedIndexes.value.push(index);
+                    }
+                };
+
+                const p4InfoFileToJson = (file) => {
+                    const reader = new FileReader();
+                    reader.readAsText(file);
+                    reader.onload = (e) => {
+                        p4infoJson.value = parseP4InfoText(e.target.result);
+                    };
+                };
+
+                const getActionName = (actionId) => {
+                    const action = p4infoJson.value.actions.find(a => a.preamble.id === actionId);
+                    return action ? action.preamble.name : '';
+                };
+
+                const getActionParams = (actionId) => {
+                    const action = p4infoJson.value.actions.find(a => a.preamble.id === actionId);
+                    return action ? action.params : [];
+                };
+
+                const handleActionChange = () => {
+                    actionParams.value = {};
+                };
+
+                const submitTableEntry = async (tableId) => {
+                    try {
+                        const table = p4infoJson.value.tables.find(t => t.preamble.id === tableId);
+                        const tableName = table.preamble.name;
+
+                        const action = p4infoJson.value.actions.find(a => a.preamble.id === selectedAction.value);
+                        const actionName = action.preamble.name;
+
+                        const orderedParams = action.params.map(param => actionParams.value[param.name]);
+
+                        const entry = {
+                            tableName: tableName,
+                            matchField: tableEntryData.value,
+                            actionName: actionName,
+                            params: orderedParams
+                        };
+
+                        console.log('添加的表项:', JSON.stringify(entry, null, 2));
+                        let accessToken = localStorage.getItem('accessToken');
+
+                        fetch(serverAddr + '/auth/tableEntryExact', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            },
+                            body: JSON.stringify(entry)
+                        })
+                            .then(res => {
+                                switch (res.status) {
+                                    case 200:
+                                    case 201:
+                                        insertTableEntryMsg.value = '添加表项成功!';
+                                        break;
+                                    case 401:
+                                        checkTokens()
+                                            .then(() => {
+                                                console.log('tokens refresh ok.');
+                                                submitTableEntry(tableId);
+                                            })
+                                            .catch(() => {
+                                                console.log('tokens refresh failed.');
+                                            });
+                                        break;
+                                    default:
+                                        insertTableEntryMsg.value = `添加表项失败! ${res.status}`;
+                                }
+                                return res.json();
+                            })
+                            .then(data => {
+                                console.log(data.msg);
+                            })
+                            .catch(err => {
+                                console.log(err);
+                                distributeMsg.value = '下发失败!';
+                            });
+                    } catch (error) {
+                        console.error('Error:', error);
+                    }
+                };
+
                 return {
                     count,
                     refreshToken,
@@ -191,7 +400,18 @@
                     handleBinChange,
                     distributeP4Artifacts,
                     distributeMsg,
-                    isLoading
+                    isLoading,
+                    p4infoJson,
+                    expandedIndexes,
+                    toggleDropdown,
+                    selectedAction,
+                    tableEntryData,
+                    actionParams,
+                    getActionName,
+                    getActionParams,
+                    handleActionChange,
+                    submitTableEntry,
+                    insertTableEntryMsg
                 };
             }
         });
