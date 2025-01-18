@@ -63,6 +63,31 @@
         .table-header:hover {
             background-color: #f5f5f5;
         }
+
+        .main-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+        }
+
+        .tables-section {
+            margin-top: 2rem;
+        }
+
+        .upload-form {
+            max-width: 100%;
+            margin: 0;
+            box-shadow: none;
+            padding: 0;
+        }
     </style>
 </head>
 
@@ -73,98 +98,110 @@
         </div>
     </nav>
 
-    <div id="app" class="container mt-4">
-        <div v-if="refreshToken">
-            <form @submit.prevent="distributeP4Artifacts" class="upload-form bg-white">
-                <h2 class="mb-4">配置文件下发</h2>
+    <div id="app">
+        <div v-if="refreshToken" class="main-content">
+            <div class="row">
+                <!-- 左侧上传表单 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <form @submit.prevent="distributeP4Artifacts" class="upload-form bg-white">
+                            <h2 class="mb-4">配置文件下发</h2>
 
-                <div class="file-input-wrapper">
-                    <label class="form-label">P4Info 文件</label>
-                    <input class="form-control" type="file" @change="handleP4infoChange">
+                            <div class="file-input-wrapper">
+                                <label class="form-label">P4Info 文件</label>
+                                <input class="form-control" type="file" @change="handleP4infoChange">
+                            </div>
+
+                            <div class="file-input-wrapper">
+                                <label class="form-label">Bin 文件</label>
+                                <input class="form-control" type="file" @change="handleBinChange">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100 mt-3">
+                                <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
+                                提交
+                            </button>
+
+                            <div class="alert" :class="distributeMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                                v-if="distributeMsg" role="alert">
+                                {{ distributeMsg }}
+                            </div>
+                        </form>
+                    </div>
                 </div>
 
-                <div class="file-input-wrapper">
-                    <label class="form-label">Bin 文件</label>
-                    <input class="form-control" type="file" @change="handleBinChange">
-                </div>
-
-                <button type="submit" class="btn btn-primary w-100 mt-3">
-                    <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
-                    提交
-                </button>
-
-                <div class="alert" :class="distributeMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
-                    v-if="distributeMsg" role="alert">
-                    {{ distributeMsg }}
-                </div>
-            </form>
-
-            <h1>Table 列表展示</h1>
-            <div v-if="p4infoJson && p4infoJson.tables.length > 0">
-                <ul>
-                    <li v-for="(table, index) in p4infoJson.tables" :key="index">
-                        <div class="table-header" @click="toggleDropdown(index)">
-                            <span class="table-name">{{ table.preamble.name }}</span>
-                            <span class="table-alias">({{ table.preamble.alias }})</span>
-                        </div>
-                        <!-- 下拉框 -->
-                        <div v-if="expandedIndexes.includes(index)" class="dropdown">
-                            <p><strong>表ID:</strong> {{ table.preamble.id }}</p>
-                            <p><strong>匹配字段:</strong></p>
+                <!-- 右侧流表区域 -->
+                <div class="col-md-6">
+                    <div class="card">
+                        <h2>P4流表</h2>
+                        <div v-if="p4infoJson && p4infoJson.tables.length > 0">
                             <ul>
-                                <li v-for="(field, fIndex) in table.match_fields" :key="fIndex">
-                                    {{ field.name }} ({{ field.match_type }}, 位宽: {{ field.bitwidth }})
+                                <li v-for="(table, index) in p4infoJson.tables" :key="index">
+                                    <div class="table-header" @click="toggleDropdown(index)">
+                                        <span class="table-name">{{ table.preamble.name }}</span>
+                                        <span class="table-alias">({{ table.preamble.alias }})</span>
+                                    </div>
+                                    <!-- 下拉框 -->
+                                    <div v-if="expandedIndexes.includes(index)" class="dropdown">
+                                        <p>匹配字段:</p>
+                                        <ul>
+                                            <li v-for="(field, fIndex) in table.match_fields" :key="fIndex">
+                                                {{ field.name }} ({{ field.match_type }}, 位宽: {{ field.bitwidth }})
+                                            </li>
+                                        </ul>
+
+                                        <!-- 新增表项表单 -->
+                                        <form @submit.prevent="submitTableEntry(table.preamble.id)">
+                                            <div class="mb-3">
+                                                <label class="form-label">匹配字段值:</label>
+                                                <div v-for="field in table.match_fields" :key="field.name" class="mb-2">
+                                                    <label class="form-label">{{ field.name }}:</label>
+                                                    <input type="text" class="form-control"
+                                                        v-model="tableEntryData[field.name]" required>
+                                                </div>
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">选择Action:</label>
+                                                <select class="form-select" v-model="selectedAction"
+                                                    @change="handleActionChange">
+                                                    <option value="">请选择Action</option>
+                                                    <option v-for="action in table.action_refs" :key="action.id"
+                                                        :value="action.id">
+                                                        {{ getActionName(action.id) }}
+                                                    </option>
+                                                </select>
+                                            </div>
+
+                                            <div v-if="selectedAction" class="mb-3">
+                                                <label class="form-label">Action参数:</label>
+                                                <div v-for="param in getActionParams(selectedAction)" :key="param.name"
+                                                    class="mb-2">
+                                                    <label class="form-label">{{ param.name }} (位宽: {{ param.bitwidth
+                                                        }}):</label>
+                                                    <input type="text" class="form-control"
+                                                        v-model="actionParams[param.name]" required>
+                                                </div>
+                                            </div>
+
+                                            <button type="submit" class="btn btn-primary">添加表项</button>
+                                            <div class="alert"
+                                                :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                                                v-if="insertTableEntryMsg" role="alert">
+                                                {{ insertTableEntryMsg }}
+                                            </div>
+                                        </form>
+                                    </div>
                                 </li>
                             </ul>
-                            <p><strong>表大小:</strong> {{ table.size }}</p>
-
-                            <!-- 新增表项表单 -->
-                            <form @submit.prevent="submitTableEntry(table.preamble.id)">
-                                <div class="mb-3">
-                                    <label class="form-label">匹配字段值:</label>
-                                    <div v-for="field in table.match_fields" :key="field.name" class="mb-2">
-                                        <label class="form-label">{{ field.name }}:</label>
-                                        <input type="text" class="form-control" v-model="tableEntryData[field.name]"
-                                            required>
-                                    </div>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label class="form-label">选择Action:</label>
-                                    <select class="form-select" v-model="selectedAction" @change="handleActionChange">
-                                        <option value="">请选择Action</option>
-                                        <option v-for="action in table.action_refs" :key="action.id" :value="action.id">
-                                            {{ getActionName(action.id) }}
-                                        </option>
-                                    </select>
-                                </div>
-
-                                <div v-if="selectedAction" class="mb-3">
-                                    <label class="form-label">Action参数:</label>
-                                    <div v-for="param in getActionParams(selectedAction)" :key="param.name"
-                                        class="mb-2">
-                                        <label class="form-label">{{ param.name }} (位宽: {{ param.bitwidth }}):</label>
-                                        <input type="text" class="form-control" v-model="actionParams[param.name]"
-                                            required>
-                                    </div>
-                                </div>
-
-                                <button type="submit" class="btn btn-primary">添加表项</button>
-                                <div class="alert"
-                                    :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
-                                    v-if="insertTableEntryMsg" role="alert">
-                                    {{ insertTableEntryMsg }}
-                                </div>
-                            </form>
                         </div>
-                    </li>
-                </ul>
-            </div>
-            <div v-else>
-                <p>没有找到任何表。</p>
+                        <div v-else>
+                            <p>没有找到任何表。</p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-
         <div v-else class="text-center mt-5">
             <div class="alert alert-warning" role="alert">
                 <i class="bi bi-exclamation-triangle me-2"></i>
