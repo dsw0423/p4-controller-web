@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P4 Controller</title>
     <link href="./bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         .upload-form {
             max-width: 500px;
@@ -100,6 +101,39 @@
 
     <div id="app">
         <div v-if="refreshToken" class="main-content">
+            <div class="card mb-4">
+                <h2 class="mb-4">配置文件列表</h2>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>文件名</th>
+                                <th>上传时间</th>
+                                <th>文件大小</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="file in fileList" :key="file.hash">
+                                <td>{{ file.fileName }}</td>
+                                <td>{{ file.timestamp }}</td>
+                                <td>{{ file.size }}B</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary me-2" @click="downloadFile(file.hash)">
+                                        <i class="bi bi-download"></i> 下载
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" @click="deleteFile(file.hash)">
+                                        <i class="bi bi-trash"></i> 删除
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr v-if="fileList.length === 0">
+                                <td colspan="4" class="text-center">暂无配置文件</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
             <div class="row">
                 <!-- 左侧上传表单 -->
                 <div class="col-md-6">
@@ -230,6 +264,7 @@
                 const tableEntryData = ref({});
                 const actionParams = ref({});
                 const insertTableEntryMsg = ref('');
+                const fileList = ref([]);
 
                 const checkTokens = () => {
                     return new Promise((resolve, reject) => {
@@ -269,6 +304,7 @@
                 checkTokens()
                     .then(() => {
                         console.log('tokens refresh ok.');
+                        fetchFileList();
                     })
                     .catch(() => {
                         console.log('tokens refresh failed.');
@@ -310,6 +346,7 @@
                                     case 200:
                                     case 201:
                                         distributeMsg.value = '下发成功!';
+                                        fetchFileList();
                                         break;
                                     case 401:
                                         checkTokens()
@@ -430,6 +467,92 @@
                     }
                 };
 
+                const fetchFileList = async () => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(serverAddr + '/auth/filesList', {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return fetchFileList();
+                        }
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            fileList.value = data || [];
+                        }
+                    } catch (error) {
+                        console.error('Error fetching file list:', error);
+                    }
+                };
+
+                const downloadFile = async (fileHash) => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/file/${fileHash}`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return downloadFile(fileHash);
+                        }
+
+                        if (response.ok) {
+                            const contentDisposition = response.headers.get("Content-Disposition");
+                            let filename = fileHash; // 默认文件名
+                            if (contentDisposition && contentDisposition.includes("filename=")) {
+                                filename = contentDisposition
+                                    .split("filename=")[1]
+                                    .replace(/['"]/g, ""); // 去除可能的引号
+                            }
+
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            a.remove();
+                        }
+                    } catch (error) {
+                        console.error('Error downloading file:', error);
+                    }
+                };
+
+                const deleteFile = async (fileHash) => {
+                    if (!confirm('确定要删除此文件吗？')) return;
+
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/file/${fileHash}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return deleteFile(fileHash);
+                        }
+
+                        if (response.ok) {
+                            await fetchFileList(); // Refresh the list
+                        }
+                    } catch (error) {
+                        console.error('Error deleting file:', error);
+                    }
+                };
+
                 return {
                     count,
                     refreshToken,
@@ -448,7 +571,10 @@
                     getActionParams,
                     handleActionChange,
                     submitTableEntry,
-                    insertTableEntryMsg
+                    insertTableEntryMsg,
+                    fileList,
+                    downloadFile,
+                    deleteFile
                 };
             }
         });
