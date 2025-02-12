@@ -89,164 +89,378 @@
             box-shadow: none;
             padding: 0;
         }
+
+        .nav-pills .nav-link.active {
+            background-color: #495057;
+        }
+
+        .nav-pills .nav-link {
+            color: #212529 !important;
+            /* 深灰色文字 */
+            border-radius: 0;
+            padding: 10px 15px;
+            transition: all 0.3s ease;
+            margin: 2px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* 移除悬停效果 */
+        .nav-pills .nav-link:hover {
+            background-color: transparent;
+        }
+
+        .nav-pills .nav-link.active {
+            background-color: #e9ecef !important;
+            /* 浅灰色背景 */
+            color: #000000 !important;
+            /* 黑色文字 */
+            font-weight: 500;
+        }
+
+        .nav-pills .nav-link span,
+        .nav-pills .nav-link i {
+            color: inherit !important;
+        }
+
+        /* 添加选中标记图标 */
+        .nav-pills .nav-link.active::after {
+            content: "\F26A";
+            /* Bootstrap Icons 中的箭头图标 */
+            font-family: "bootstrap-icons";
+            margin-left: 8px;
+            font-size: 14px;
+        }
+
+        .badge {
+            padding: 0.5em 0.8em;
+        }
+
+        /* 页面切换动画 */
+        .page-fade-enter-active,
+        .page-fade-leave-active {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .page-fade-enter-from {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+
+        .page-fade-leave-to {
+            opacity: 0;
+            transform: translateX(-20px);
+        }
+
+        .page-fade-enter-to,
+        .page-fade-leave-from {
+            opacity: 1;
+            transform: translateX(0);
+        }
     </style>
 </head>
 
 <body class="bg-light">
-    <nav class="navbar navbar-dark bg-dark">
-        <div class="container">
-            <span class="navbar-brand">P4 Controller</span>
-        </div>
-    </nav>
-
-    <div id="app">
-        <div v-if="refreshToken" class="main-content">
-            <div class="card mb-4">
-                <h2 class="mb-4">配置文件列表</h2>
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>文件名</th>
-                                <th>上传时间</th>
-                                <th>文件大小</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="file in fileList" :key="file.hash">
-                                <td>{{ file.fileName }}</td>
-                                <td>{{ file.timestamp }}</td>
-                                <td>{{ file.size }}B</td>
-                                <td>
-                                    <button class="btn btn-sm btn-primary me-2" @click="downloadFile(file.hash)">
-                                        <i class="bi bi-download"></i> 下载
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" @click="deleteFile(file.hash)">
-                                        <i class="bi bi-trash"></i> 删除
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr v-if="fileList.length === 0">
-                                <td colspan="4" class="text-center">暂无配置文件</td>
-                            </tr>
-                        </tbody>
-                    </table>
+    <div class="container-fluid">
+        <div class="row" id="app">
+            <!-- Sidebar -->
+            <div class="col-md-2 bg-dark min-vh-100 d-flex flex-column position-fixed">
+                <div class="p-3">
+                    <h5 class="text-white">P4 Controller</h5>
                 </div>
+                <ul class="nav nav-pills flex-column mb-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" :class="{ active: currentPage === 'p4config' }" href="#"
+                            @click.prevent="switchPage('p4config')">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-gear"></i>
+                                <span class="ms-2">P4配置</span>
+                            </div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" :class="{ active: currentPage === 'device' }" href="#"
+                            @click.prevent="switchPage('device')">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-hdd-network"></i>
+                                <span class="ms-2">设备状态</span>
+                            </div>
+                        </a>
+                    </li>
+                </ul>
             </div>
-            <div class="row">
-                <!-- 左侧上传表单 -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <form @submit.prevent="distributeP4Artifacts" class="upload-form bg-white">
-                            <h2 class="mb-4">配置文件下发</h2>
 
-                            <div class="file-input-wrapper">
-                                <label class="form-label">P4Info 文件</label>
-                                <input class="form-control" type="file" @change="handleP4infoChange">
+            <!-- Main Content -->
+            <div class="col-md-10 ms-auto">
+                <div>
+                    <div v-if="refreshToken">
+                        <transition name="page-fade" mode="out-in">
+                            <!-- P4 Configuration Page -->
+                            <div v-if="currentPage === 'p4config'" class="main-content" :key="'p4config'">
+                                <div class="card mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-4">
+                                        <h2 class="mb-0">配置文件列表</h2>
+                                        <button class="btn btn-secondary btn-sm" @click="fetchFileList">
+                                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                                        </button>
+                                    </div>
+                                    <div class="table-responsive">
+                                        <table class="table table-hover">
+                                            <thead>
+                                                <tr>
+                                                    <th>文件名</th>
+                                                    <th>上传时间</th>
+                                                    <th>文件大小</th>
+                                                    <th>操作</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr v-for="file in fileList" :key="file.hash">
+                                                    <td>{{ file.fileName }}</td>
+                                                    <td>{{ file.timestamp }}</td>
+                                                    <td>{{ file.size }}B</td>
+                                                    <td>
+                                                        <button class="btn btn-sm btn-primary me-2"
+                                                            @click="downloadFile(file.hash)">
+                                                            <i class="bi bi-download"></i> 下载
+                                                        </button>
+                                                        <button class="btn btn-sm btn-danger"
+                                                            @click="deleteFile(file.hash)">
+                                                            <i class="bi bi-trash"></i> 删除
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                                <tr v-if="fileList.length === 0">
+                                                    <td colspan="4" class="text-center">暂无配置文件</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <!-- 左侧上传表单 -->
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <form @submit.prevent="distributeP4Artifacts" class="upload-form bg-white">
+                                                <h2 class="mb-4">配置文件下发</h2>
+
+                                                <div class="file-input-wrapper">
+                                                    <label class="form-label">P4Info 文件</label>
+                                                    <input class="form-control" type="file" @change="handleP4infoChange">
+                                                </div>
+
+                                                <div class="file-input-wrapper">
+                                                    <label class="form-label">Bin 文件</label>
+                                                    <input class="form-control" type="file" @change="handleBinChange">
+                                                </div>
+
+                                                <button type="submit" class="btn btn-primary w-100 mt-3">
+                                                    <span v-if="isLoading"
+                                                        class="spinner-border spinner-border-sm me-2"></span>
+                                                    提交
+                                                </button>
+
+                                                <div class="alert"
+                                                    :class="distributeMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                                                    v-if="distributeMsg" role="alert">
+                                                    {{ distributeMsg }}
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+
+                                    <!-- 右侧流表区域 -->
+                                    <div class="col-md-6">
+                                        <div class="card">
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                <h2>P4流表</h2>
+                                                <button class="btn btn-secondary btn-sm" @click="fetchP4Info">
+                                                    <i class="bi bi-arrow-clockwise"></i> 刷新
+                                                </button>
+                                            </div>
+                                            <div v-if="p4infoJson && p4infoJson.tables.length > 0">
+                                                <ul>
+                                                    <li v-for="(table, index) in p4infoJson.tables" :key="index">
+                                                        <div class="table-header" @click="toggleDropdown(index)">
+                                                            <span class="table-name">{{ table.preamble.name }}</span>
+                                                            <!-- <span class="table-alias">({{ table.preamble.alias }})</span> -->
+                                                        </div>
+                                                        <!-- 下拉框 -->
+                                                        <div v-if="expandedIndexes.includes(index)" class="dropdown">
+                                                            <p>匹配字段:</p>
+                                                            <ul>
+                                                                <li v-for="(field, fIndex) in table.match_fields"
+                                                                    :key="fIndex">
+                                                                    {{ field.name }} (匹配类型：{{
+                                                                    getMatchType(field.Match.MatchType) }}, 位宽: {{
+                                                                    field.bitwidth }})
+                                                                </li>
+                                                            </ul>
+
+                                                            <!-- 新增表项表单 -->
+                                                            <form @submit.prevent="submitTableEntry(table.preamble.id)">
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">匹配字段值:</label>
+                                                                    <div v-for="field in table.match_fields"
+                                                                        :key="field.name" class="mb-2">
+                                                                        <label class="form-label">{{ field.name }}:</label>
+                                                                        <input type="text" class="form-control"
+                                                                            v-model="tableEntryData[field.name]" required>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">选择Action:</label>
+                                                                    <select class="form-select" v-model="selectedAction"
+                                                                        @change="handleActionChange">
+                                                                        <option value="">请选择Action</option>
+                                                                        <option v-for="action in table.action_refs"
+                                                                            :key="action.id" :value="action.id">
+                                                                            {{ getActionName(action.id) }}
+                                                                        </option>
+                                                                    </select>
+                                                                </div>
+
+                                                                <div v-if="selectedAction" class="mb-3">
+                                                                    <label class="form-label">Action参数:</label>
+                                                                    <div v-for="param in getActionParams(selectedAction)"
+                                                                        :key="param.name" class="mb-2">
+                                                                        <label class="form-label">{{ param.name }} (位宽: {{
+                                                                            param.bitwidth
+                                                                            }}):</label>
+                                                                        <input type="text" class="form-control"
+                                                                            v-model="actionParams[param.name]" required>
+                                                                    </div>
+                                                                </div>
+
+                                                                <button type="submit" class="btn btn-primary">添加表项</button>
+                                                                <div class="alert"
+                                                                    :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
+                                                                    v-if="insertTableEntryMsg" role="alert">
+                                                                    {{ insertTableEntryMsg }}
+                                                                </div>
+                                                            </form>
+                                                            <div class="mt-4">
+                                                                <h4>现有表项</h4>
+                                                                <button class="btn btn-secondary btn-sm mb-3"
+                                                                    @click="fetchTableEntries(table.preamble.name)">
+                                                                    刷新表项
+                                                                </button>
+                                                                <div class="table-responsive">
+                                                                    <table class="table table-sm table-bordered">
+                                                                        <thead>
+                                                                            <tr>
+                                                                                <th>ID</th>
+                                                                                <th>匹配字段</th>
+                                                                                <th>动作</th>
+                                                                                <th>参数</th>
+                                                                                <th>操作</th>
+                                                                            </tr>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            <tr v-for="entry in tableEntries"
+                                                                                :key="entry.id">
+                                                                                <td>{{ entry.id }}</td>
+                                                                                <td>
+                                                                                    <div v-for="(value, key) in entry.matchField"
+                                                                                        :key="key">
+                                                                                        {{ key }}: {{ value }}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td>{{ entry.actionName }}</td>
+                                                                                <td>
+                                                                                    <div v-for="(value, key) in entry.params"
+                                                                                        :key="key">
+                                                                                        {{ key }}: {{ value }}
+                                                                                    </div>
+                                                                                </td>
+                                                                                <td>
+                                                                                    <button class="btn btn-danger btn-sm"
+                                                                                        @click="deleteTableEntry(table.preamble.name, entry.id)">
+                                                                                        <i class="bi bi-trash"></i>
+                                                                                    </button>
+                                                                                </td>
+                                                                            </tr>
+                                                                            <tr v-if="tableEntries.length === 0">
+                                                                                <td colspan="5" class="text-center">暂无表项
+                                                                                </td>
+                                                                            </tr>
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                            <div v-else>
+                                                <p>没有找到任何表。</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            <div class="file-input-wrapper">
-                                <label class="form-label">Bin 文件</label>
-                                <input class="form-control" type="file" @change="handleBinChange">
+                            <!-- Device Status Page -->
+                            <div v-else-if="currentPage === 'device'" class="main-content" :key="'device'">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">端口状态</h5>
+                                        <button class="btn btn-secondary btn-sm" @click="fetchPortStatus">
+                                            <i class="bi bi-arrow-clockwise"></i> 刷新
+                                        </button>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>端口ID</th>
+                                                        <th>MAC</th>
+                                                        <th>MTU</th>
+                                                        <th>状态</th>
+                                                        <th>速率(Mbps)</th>
+                                                        <th>双工模式</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr v-for="port in portStatus" :key="port.portId">
+                                                        <td>{{ port.portId }}</td>
+                                                        <td>{{ port.mac_addr }}</td>
+                                                        <td>{{ port.mtu }}</td>
+                                                        <td>
+                                                            <span
+                                                                :class="port.status === 'UP' ? 'badge bg-success' : 'badge bg-danger'">
+                                                                {{ port.status }}
+                                                            </span>
+                                                        </td>
+                                                        <td>{{ port.speed }}</td>
+                                                        <td>{{ port.duplex }}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-
-                            <button type="submit" class="btn btn-primary w-100 mt-3">
-                                <span v-if="isLoading" class="spinner-border spinner-border-sm me-2"></span>
-                                提交
-                            </button>
-
-                            <div class="alert" :class="distributeMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
-                                v-if="distributeMsg" role="alert">
-                                {{ distributeMsg }}
-                            </div>
-                        </form>
+                        </transition>
+                    </div>
+                    <!-- Login redirect message -->
+                    <div v-else class="text-center mt-5">
+                        <div class="alert alert-warning" role="alert">
+                            <i class="bi bi-exclamation-triangle me-2"></i>
+                            未登录，{{ count }} 秒后跳转到登录页面...
+                        </div>
                     </div>
                 </div>
-
-                <!-- 右侧流表区域 -->
-                <div class="col-md-6">
-                    <div class="card">
-                        <h2>P4流表</h2>
-                        <div v-if="p4infoJson && p4infoJson.tables.length > 0">
-                            <ul>
-                                <li v-for="(table, index) in p4infoJson.tables" :key="index">
-                                    <div class="table-header" @click="toggleDropdown(index)">
-                                        <span class="table-name">{{ table.preamble.name }}</span>
-                                        <span class="table-alias">({{ table.preamble.alias }})</span>
-                                    </div>
-                                    <!-- 下拉框 -->
-                                    <div v-if="expandedIndexes.includes(index)" class="dropdown">
-                                        <p>匹配字段:</p>
-                                        <ul>
-                                            <li v-for="(field, fIndex) in table.match_fields" :key="fIndex">
-                                                {{ field.name }} ({{ field.match_type }}, 位宽: {{ field.bitwidth }})
-                                            </li>
-                                        </ul>
-
-                                        <!-- 新增表项表单 -->
-                                        <form @submit.prevent="submitTableEntry(table.preamble.id)">
-                                            <div class="mb-3">
-                                                <label class="form-label">匹配字段值:</label>
-                                                <div v-for="field in table.match_fields" :key="field.name" class="mb-2">
-                                                    <label class="form-label">{{ field.name }}:</label>
-                                                    <input type="text" class="form-control"
-                                                        v-model="tableEntryData[field.name]" required>
-                                                </div>
-                                            </div>
-
-                                            <div class="mb-3">
-                                                <label class="form-label">选择Action:</label>
-                                                <select class="form-select" v-model="selectedAction"
-                                                    @change="handleActionChange">
-                                                    <option value="">请选择Action</option>
-                                                    <option v-for="action in table.action_refs" :key="action.id"
-                                                        :value="action.id">
-                                                        {{ getActionName(action.id) }}
-                                                    </option>
-                                                </select>
-                                            </div>
-
-                                            <div v-if="selectedAction" class="mb-3">
-                                                <label class="form-label">Action参数:</label>
-                                                <div v-for="param in getActionParams(selectedAction)" :key="param.name"
-                                                    class="mb-2">
-                                                    <label class="form-label">{{ param.name }} (位宽: {{ param.bitwidth
-                                                        }}):</label>
-                                                    <input type="text" class="form-control"
-                                                        v-model="actionParams[param.name]" required>
-                                                </div>
-                                            </div>
-
-                                            <button type="submit" class="btn btn-primary">添加表项</button>
-                                            <div class="alert"
-                                                :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
-                                                v-if="insertTableEntryMsg" role="alert">
-                                                {{ insertTableEntryMsg }}
-                                            </div>
-                                        </form>
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                        <div v-else>
-                            <p>没有找到任何表。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div v-else class="text-center mt-5">
-            <div class="alert alert-warning" role="alert">
-                <i class="bi bi-exclamation-triangle me-2"></i>
-                未登录，{{ count }} 秒后跳转到登录页面...
             </div>
         </div>
     </div>
 
     <script type="module">
         import { createApp, ref } from './vue.esm-browser.js';
-        import { gotoLogin, checkAuth, serverAddr } from './login.js';
+        import { gotoLogin, checkAuth, serverAddr, serverAddrWS } from './login.js';
         import { parseP4InfoText } from './utils.js';
 
 
@@ -265,6 +479,9 @@
                 const actionParams = ref({});
                 const insertTableEntryMsg = ref('');
                 const fileList = ref([]);
+                const tableEntries = ref([]);
+                const currentPage = ref('p4config');
+                const portStatus = ref([]);
 
                 const checkTokens = () => {
                     return new Promise((resolve, reject) => {
@@ -305,14 +522,20 @@
                     .then(() => {
                         console.log('tokens refresh ok.');
                         fetchFileList();
+                        fetchP4Info(); // Add this line
                     })
                     .catch(() => {
                         console.log('tokens refresh failed.');
                     });
 
+                const ws = new WebSocket(serverAddrWS + '/portsBitRate');
+                ws.onmessage = (event) => {
+                    console.log(event.data);
+                };
+
                 const handleP4infoChange = (e) => {
                     p4info.value = e.target.files[0];
-                    p4InfoFileToJson(p4info.value);
+                    // p4InfoFileToJson(p4info.value);
                 };
 
                 const handleBinChange = (e) => {
@@ -347,6 +570,7 @@
                                     case 201:
                                         distributeMsg.value = '下发成功!';
                                         fetchFileList();
+                                        fetchP4Info();
                                         break;
                                     case 401:
                                         checkTokens()
@@ -415,13 +639,13 @@
                         const action = p4infoJson.value.actions.find(a => a.preamble.id === selectedAction.value);
                         const actionName = action.preamble.name;
 
-                        const orderedParams = action.params.map(param => actionParams.value[param.name]);
+                        // const orderedParams = action.params.map(param => actionParams.value[param.name]);
 
                         const entry = {
                             tableName: tableName,
                             matchField: tableEntryData.value,
                             actionName: actionName,
-                            params: orderedParams
+                            params: actionParams.value
                         };
 
                         console.log('添加的表项:', JSON.stringify(entry, null, 2));
@@ -439,6 +663,7 @@
                                     case 200:
                                     case 201:
                                         insertTableEntryMsg.value = '添加表项成功!';
+                                        fetchTableEntries(tableName);
                                         break;
                                     case 401:
                                         checkTokens()
@@ -553,6 +778,126 @@
                     }
                 };
 
+                const fetchTableEntries = async (tableName) => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/tableEntries?name=${tableName}`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return fetchTableEntries(tableName);
+                        }
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            tableEntries.value = data || [];
+                        }
+                    } catch (error) {
+                        console.error('Error fetching table entries:', error);
+                    }
+                };
+
+                const deleteTableEntry = async (tableName, entryId) => {
+                    if (!confirm('确定要删除此表项吗？')) return;
+
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/tableEntry?tableName=${tableName}&entryId=${entryId}`, {
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return deleteTableEntry(tableName, entryId);
+                        }
+
+                        if (response.ok) {
+                            response.json().then(data => {
+                                console.log(data.msg);
+                            });
+                            await fetchTableEntries(tableName); // Refresh the list
+                        }
+                    } catch (error) {
+                        console.error('Error deleting table entry:', error);
+                    }
+                };
+
+                const fetchP4Info = async () => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/p4info`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return fetchP4Info();
+                        }
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            p4infoJson.value = data;
+                        } else {
+                            p4infoJson.value = null;
+                            const data = await response.json();
+                            console.log(data.msg);
+                        }
+                    } catch (error) {
+                        console.error('Error fetching P4 info:', error);
+                    }
+                };
+
+                const getMatchType = (code) => {
+                    switch (code) {
+                        case 2:
+                            return 'EXACT';
+                        default:
+                            return 'UNKNOWN';
+                    }
+                };
+
+                const fetchPortStatus = async () => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/portsInfo`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return fetchPortStatus();
+                        }
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            portStatus.value = data || [];
+                        }
+                    } catch (error) {
+                        console.error('Error fetching port status:', error);
+                    }
+                };
+
+                const switchPage = (page) => {
+                    currentPage.value = page;
+                    if (page === 'device') {
+                        fetchPortStatus();
+                    } else if (page === 'p4config') {
+                        fetchFileList();
+                        fetchP4Info();
+                    }
+                };
+
                 return {
                     count,
                     refreshToken,
@@ -574,7 +919,17 @@
                     insertTableEntryMsg,
                     fileList,
                     downloadFile,
-                    deleteFile
+                    deleteFile,
+                    tableEntries,
+                    fetchTableEntries,
+                    deleteTableEntry,
+                    fetchP4Info,
+                    getMatchType,
+                    currentPage,
+                    portStatus,
+                    fetchPortStatus,
+                    switchPage,
+                    fetchFileList
                 };
             }
         });

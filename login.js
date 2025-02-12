@@ -1,4 +1,5 @@
 const serverAddr = 'http://10.129.254.190:8080';
+const serverAddrWS = 'ws://10.129.254.190:8080';
 
 const gotoLogin = (count) => {
     if (!('value' in count)) {
@@ -59,4 +60,4 @@ const updateAccessToken = () => {
 
 };
 
-export { gotoLogin, checkAuth, serverAddr, updateAccessToken };
+export { gotoLogin, checkAuth, serverAddr, updateAccessToken, serverAddrWS };
