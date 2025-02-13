@@ -304,9 +304,11 @@
                                                                     <label class="form-label">匹配字段值:</label>
                                                                     <div v-for="field in table.match_fields"
                                                                         :key="field.name" class="mb-2">
-                                                                        <label class="form-label">{{ field.name }}:</label>
+                                                                        <label class="form-label">{{ field.name
+                                                                            }}:</label>
                                                                         <input type="text" class="form-control"
-                                                                            v-model="tableEntryData[field.name]" required>
+                                                                            v-model="tableEntryData[field.name]"
+                                                                            required>
                                                                     </div>
                                                                 </div>
 
@@ -326,7 +328,8 @@
                                                                     <label class="form-label">Action参数:</label>
                                                                     <div v-for="param in getActionParams(selectedAction)"
                                                                         :key="param.name" class="mb-2">
-                                                                        <label class="form-label">{{ param.name }} (位宽: {{
+                                                                        <label class="form-label">{{ param.name }} (位宽:
+                                                                            {{
                                                                             param.bitwidth
                                                                             }}):</label>
                                                                         <input type="text" class="form-control"
@@ -334,7 +337,8 @@
                                                                     </div>
                                                                 </div>
 
-                                                                <button type="submit" class="btn btn-primary">添加表项</button>
+                                                                <button type="submit"
+                                                                    class="btn btn-primary">添加表项</button>
                                                                 <div class="alert"
                                                                     :class="insertTableEntryMsg.includes('成功') ? 'alert-success' : 'alert-danger'"
                                                                     v-if="insertTableEntryMsg" role="alert">
@@ -376,7 +380,8 @@
                                                                                     </div>
                                                                                 </td>
                                                                                 <td>
-                                                                                    <button class="btn btn-danger btn-sm"
+                                                                                    <button
+                                                                                        class="btn btn-danger btn-sm"
                                                                                         @click="deleteTableEntry(table.preamble.name, entry.id)">
                                                                                         <i class="bi bi-trash"></i>
                                                                                     </button>
@@ -422,6 +427,7 @@
                                                         <th>状态</th>
                                                         <th>速率(Mbps)</th>
                                                         <th>双工模式</th>
+                                                        <th>实时流量(Mbps)</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -437,6 +443,10 @@
                                                         </td>
                                                         <td>{{ port.speed }}</td>
                                                         <td>{{ port.duplex }}</td>
+                                                        <td>
+                                                            <div>↑ {{ portRates[port.portId]?.txRate || 0 }}</div>
+                                                            <div>↓ {{ portRates[port.portId]?.rxRate || 0 }}</div>
+                                                        </td>
                                                     </tr>
                                                 </tbody>
                                             </table>
@@ -459,7 +469,7 @@
     </div>
 
     <script type="module">
-        import { createApp, ref } from './vue.esm-browser.js';
+        import { createApp, ref, onUnmounted } from './vue.esm-browser.js';
         import { gotoLogin, checkAuth, serverAddr, serverAddrWS } from './login.js';
         import { parseP4InfoText } from './utils.js';
 
@@ -482,6 +492,14 @@
                 const tableEntries = ref([]);
                 const currentPage = ref('p4config');
                 const portStatus = ref([]);
+                const portRates = ref({});
+
+                // WebSocket
+                const ws = ref(null);
+                const wsReconnectTimer = ref(null);
+                const wsReconnectAttempts = ref(0);
+                const MAX_RECONNECT_ATTEMPTS = 5;
+                const RECONNECT_INTERVAL = 3000; // 3秒
 
                 const checkTokens = () => {
                     return new Promise((resolve, reject) => {
@@ -518,20 +536,80 @@
                     });
                 };
 
+                const connectWebSocket = () => {
+                    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+                        return; // 如果已经连接，则直接返回
+                    }
+
+                    try {
+                        ws.value = new WebSocket(serverAddrWS + '/portsBitRate');
+
+                        ws.value.onmessage = (event) => {
+                            const data = JSON.parse(event.data);
+                            const rates = {};
+                            data.forEach(port => {
+                                rates[port.portId] = {
+                                    rxRate: Number(port.rxRate).toFixed(5),
+                                    txRate: Number(port.txRate).toFixed(5)
+                                };
+                            });
+                            portRates.value = rates;
+                            wsReconnectAttempts.value = 0; // 重置重连次数
+                        };
+
+                        ws.value.onclose = () => {
+                            console.log('WebSocket connection closed');
+                            handleWebSocketReconnection();
+                        };
+
+                        ws.value.onerror = (error) => {
+                            console.error('WebSocket error:', error);
+                            ws.value.close(); // 错误时关闭连接，触发 onclose 事件
+                        };
+
+                    } catch (error) {
+                        console.error('WebSocket connection error:', error);
+                        handleWebSocketReconnection();
+                    }
+                };
+
+                // WebSocket 重连
+                const handleWebSocketReconnection = () => {
+                    if (wsReconnectTimer.value) {
+                        clearTimeout(wsReconnectTimer.value);
+                    }
+
+                    if (wsReconnectAttempts.value < MAX_RECONNECT_ATTEMPTS) {
+                        wsReconnectAttempts.value++;
+                        console.log(`Attempting to reconnect WebSocket (${wsReconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`);
+                        wsReconnectTimer.value = setTimeout(connectWebSocket, RECONNECT_INTERVAL);
+                    } else {
+                        console.error('Max WebSocket reconnection attempts reached');
+                    }
+                };
+
                 checkTokens()
                     .then(() => {
                         console.log('tokens refresh ok.');
                         fetchFileList();
-                        fetchP4Info(); // Add this line
+                        fetchP4Info();
+                        // 初始化 WebSocket 连接
+                        connectWebSocket();
                     })
                     .catch(() => {
                         console.log('tokens refresh failed.');
                     });
 
-                const ws = new WebSocket(serverAddrWS + '/portsBitRate');
-                ws.onmessage = (event) => {
-                    console.log(event.data);
-                };
+
+                // 组件卸载时清理
+                onUnmounted(() => {
+                    if (wsReconnectTimer.value) {
+                        clearTimeout(wsReconnectTimer.value);
+                    }
+                    if (ws.value) {
+                        ws.value.close();
+                    }
+                });
 
                 const handleP4infoChange = (e) => {
                     p4info.value = e.target.files[0];
@@ -929,7 +1007,10 @@
                     portStatus,
                     fetchPortStatus,
                     switchPage,
-                    fetchFileList
+                    fetchFileList,
+                    portRates,
+                    ws,
+                    wsReconnectAttempts
                 };
             }
         });
