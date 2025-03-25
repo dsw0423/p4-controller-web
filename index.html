@@ -159,6 +159,7 @@
             transform: translateX(0);
         }
     </style>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
 </head>
 
 <body class="bg-light">
@@ -185,6 +186,15 @@
                             <div class="d-flex align-items-center">
                                 <i class="bi bi-hdd-network"></i>
                                 <span class="ms-2">设备状态</span>
+                            </div>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" :class="{ active: currentPage === 'topology' }" href="#"
+                            @click.prevent="switchPage('topology')">
+                            <div class="d-flex align-items-center">
+                                <i class="bi bi-diagram-3"></i>
+                                <span class="ms-2">设备拓扑</span>
                             </div>
                         </a>
                     </li>
@@ -247,7 +257,8 @@
 
                                                 <div class="file-input-wrapper">
                                                     <label class="form-label">P4Info 文件</label>
-                                                    <input class="form-control" type="file" @change="handleP4infoChange">
+                                                    <input class="form-control" type="file"
+                                                        @change="handleP4infoChange">
                                                 </div>
 
                                                 <div class="file-input-wrapper">
@@ -454,6 +465,25 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Topology Page -->
+                            <div v-else-if="currentPage === 'topology'" class="main-content" :key="'topology'">
+                                <div class="card">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <h5 class="mb-0">设备拓扑图</h5>
+                                        <div>
+                                            <input type="file" class="form-control" @change="handleTopoFileUpload"
+                                                accept="application/json">
+                                            <button class="btn btn-secondary btn-sm ms-2" @click="refreshTopology">
+                                                <i class="bi bi-arrow-clockwise"></i> 刷新
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div id="topology-container" style="height: 600px;"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </transition>
                     </div>
                     <!-- Login redirect message -->
@@ -493,6 +523,8 @@
                 const currentPage = ref('p4config');
                 const portStatus = ref([]);
                 const portRates = ref({});
+                const network = ref(null);
+                const topoData = ref(null);
 
                 // WebSocket
                 const ws = ref(null);
@@ -966,6 +998,77 @@
                     }
                 };
 
+                const handleTopoFileUpload = (event) => {
+                    const file = event.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => {
+                            try {
+                                topoData.value = JSON.parse(e.target.result);
+                                renderTopology();
+                            } catch (error) {
+                                console.error('Error parsing topology file:', error);
+                            }
+                        };
+                        reader.readAsText(file);
+                    }
+                };
+
+                const renderTopology = () => {
+                    if (!topoData.value) return;
+                    
+                    const container = document.getElementById('topology-container');
+                    
+                    // 准备节点数据
+                    const nodes = topoData.value.hosts.map(host => ({
+                        id: `h${host.id}`,
+                        label: `Host ${host.id}`,
+                        shape: 'box'
+                    }));
+                    
+                    // 准备边数据
+                    const edges = topoData.value.links.map(link => {
+                        const [from, to] = link;
+                        return {
+                            from: from.split('-')[0],
+                            to: to.split('-')[0],
+                            label: `${from} → ${to}`
+                        };
+                    });
+                    
+                    const data = {
+                        nodes: new vis.DataSet(nodes),
+                        edges: new vis.DataSet(edges)
+                    };
+                    
+                    const options = {
+                        physics: {
+                            enabled: true,
+                            solver: 'forceAtlas2Based'
+                        },
+                        nodes: {
+                            font: {
+                                size: 16
+                            }
+                        },
+                        edges: {
+                            arrows: 'to',
+                            font: {
+                                size: 12,
+                                align: 'middle'
+                            }
+                        }
+                    };
+                    
+                    network.value = new vis.Network(container, data, options);
+                };
+
+                const refreshTopology = () => {
+                    if (topoData.value) {
+                        renderTopology();
+                    }
+                };
+
                 const switchPage = (page) => {
                     currentPage.value = page;
                     if (page === 'device') {
@@ -973,6 +1076,10 @@
                     } else if (page === 'p4config') {
                         fetchFileList();
                         fetchP4Info();
+                    } else if (page === 'topology') {
+                        if (topoData.value) {
+                            renderTopology();
+                        }
                     }
                 };
 
@@ -1010,7 +1117,9 @@
                     fetchFileList,
                     portRates,
                     ws,
-                    wsReconnectAttempts
+                    wsReconnectAttempts,
+                    handleTopoFileUpload,
+                    refreshTopology
                 };
             }
         });
