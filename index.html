@@ -208,6 +208,25 @@
                         <transition name="page-fade" mode="out-in">
                             <!-- P4 Configuration Page -->
                             <div v-if="currentPage === 'p4config'" class="main-content" :key="'p4config'">
+                                <!-- 添加设备选择器 -->
+                                <div class="card mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-4">
+                                        <div class="d-flex align-items-center">
+                                            <h2 class="mb-0 me-4">设备选择</h2>
+                                            <select class="form-select" v-model="selectedDevice" style="width: 200px;">
+                                                <option value="">请选择设备</option>
+                                                <option v-for="deviceId in deviceList" :key="deviceId"
+                                                    :value="deviceId">
+                                                    设备 {{ deviceId }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-secondary btn-sm" @click="fetchDeviceList">
+                                            <i class="bi bi-arrow-clockwise"></i> 刷新设备列表
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div class="card mb-4">
                                     <div class="d-flex justify-content-between align-items-center mb-4">
                                         <h2 class="mb-0">配置文件列表</h2>
@@ -420,6 +439,27 @@
 
                             <!-- Device Status Page -->
                             <div v-else-if="currentPage === 'device'" class="main-content" :key="'device'">
+                                <!-- 添加设备选择器 -->
+                                <div class="card mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-4">
+                                        <div class="d-flex align-items-center">
+                                            <h2 class="mb-0 me-4">设备选择</h2>
+                                            <select class="form-select" v-model="selectedStatusDevice"
+                                                style="width: 200px;">
+                                                <option value="">请选择设备</option>
+                                                <option v-for="deviceId in deviceList" :key="deviceId"
+                                                    :value="deviceId">
+                                                    设备 {{ deviceId }}
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <button class="btn btn-secondary btn-sm" @click="fetchDeviceList">
+                                            <i class="bi bi-arrow-clockwise"></i> 刷新设备列表
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- 端口状态卡片 -->
                                 <div class="card">
                                     <div class="card-header d-flex justify-content-between align-items-center">
                                         <h5 class="mb-0">端口状态</h5>
@@ -428,7 +468,7 @@
                                         </button>
                                     </div>
                                     <div class="card-body">
-                                        <div class="table-responsive">
+                                        <div v-if="selectedStatusDevice" class="table-responsive">
                                             <table class="table table-hover">
                                                 <thead>
                                                     <tr>
@@ -461,6 +501,9 @@
                                                     </tr>
                                                 </tbody>
                                             </table>
+                                        </div>
+                                        <div v-else class="alert alert-warning">
+                                            请先选择设备
                                         </div>
                                     </div>
                                 </div>
@@ -499,10 +542,9 @@
     </div>
 
     <script type="module">
-        import { createApp, ref, onUnmounted } from './vue.esm-browser.js';
+        import { createApp, ref, onUnmounted, watch } from './vue.esm-browser.js';
         import { gotoLogin, checkAuth, serverAddr, serverAddrWS } from './login.js';
         import { parseP4InfoText } from './utils.js';
-
 
         const app = createApp({
             setup() {
@@ -525,6 +567,9 @@
                 const portRates = ref({});
                 const network = ref(null);
                 const topoData = ref(null);
+                const selectedDevice = ref('');
+                const selectedStatusDevice = ref('');
+                const deviceList = ref([]);
 
                 // WebSocket
                 const ws = ref(null);
@@ -568,13 +613,17 @@
                     });
                 };
 
-                const connectWebSocket = () => {
-                    if (ws.value && ws.value.readyState === WebSocket.OPEN) {
-                        return; // 如果已经连接，则直接返回
+                const connectWebSocket = (hostId) => {
+                    // 关闭已有的连接
+                    if (ws.value) {
+                        ws.value.close();
+                        ws.value = null;
                     }
 
+                    if (!hostId) return;
+
                     try {
-                        ws.value = new WebSocket(serverAddrWS + '/portsBitRate');
+                        ws.value = new WebSocket(`${serverAddrWS}/portsBitRate?hostId=${hostId}`);
 
                         ws.value.onmessage = (event) => {
                             const data = JSON.parse(event.data);
@@ -586,27 +635,26 @@
                                 };
                             });
                             portRates.value = rates;
-                            wsReconnectAttempts.value = 0; // 重置重连次数
+                            wsReconnectAttempts.value = 0;
                         };
 
                         ws.value.onclose = () => {
                             console.log('WebSocket connection closed');
-                            handleWebSocketReconnection();
+                            handleWebSocketReconnection(hostId);
                         };
 
                         ws.value.onerror = (error) => {
                             console.error('WebSocket error:', error);
-                            ws.value.close(); // 错误时关闭连接，触发 onclose 事件
+                            ws.value.close();
                         };
 
                     } catch (error) {
                         console.error('WebSocket connection error:', error);
-                        handleWebSocketReconnection();
+                        handleWebSocketReconnection(hostId);
                     }
                 };
 
-                // WebSocket 重连
-                const handleWebSocketReconnection = () => {
+                const handleWebSocketReconnection = (hostId) => {
                     if (wsReconnectTimer.value) {
                         clearTimeout(wsReconnectTimer.value);
                     }
@@ -614,7 +662,7 @@
                     if (wsReconnectAttempts.value < MAX_RECONNECT_ATTEMPTS) {
                         wsReconnectAttempts.value++;
                         console.log(`Attempting to reconnect WebSocket (${wsReconnectAttempts.value}/${MAX_RECONNECT_ATTEMPTS})`);
-                        wsReconnectTimer.value = setTimeout(connectWebSocket, RECONNECT_INTERVAL);
+                        wsReconnectTimer.value = setTimeout(() => connectWebSocket(hostId), RECONNECT_INTERVAL);
                     } else {
                         console.error('Max WebSocket reconnection attempts reached');
                     }
@@ -623,15 +671,13 @@
                 checkTokens()
                     .then(() => {
                         console.log('tokens refresh ok.');
+                        fetchDeviceList();
                         fetchFileList();
                         fetchP4Info();
-                        // 初始化 WebSocket 连接
-                        connectWebSocket();
                     })
                     .catch(() => {
                         console.log('tokens refresh failed.');
                     });
-
 
                 // 组件卸载时清理
                 onUnmounted(() => {
@@ -640,6 +686,27 @@
                     }
                     if (ws.value) {
                         ws.value.close();
+                        ws.value = null;
+                    }
+                });
+
+                watch(selectedDevice, (newVal) => {
+                    if (newVal) {
+                        fetchP4Info();
+                        expandedIndexes.value = []; // 重置展开的表
+                        tableEntries.value = []; // 重置表项数据
+                    }
+                });
+
+                watch(selectedStatusDevice, (newVal) => {
+                    if (newVal) {
+                        fetchPortStatus();
+                        connectWebSocket(newVal);
+                    } else {
+                        portStatus.value = [];
+                        if (ws.value) {
+                            ws.value.close();
+                        }
                     }
                 });
 
@@ -655,6 +722,10 @@
                 const distributeP4Artifacts = async () => {
                     isLoading.value = true;
                     try {
+                        if (!selectedDevice.value) {
+                            distributeMsg.value = '请先选择设备!';
+                            return;
+                        }
                         if (!p4info.value || !bin.value) {
                             distributeMsg.value = '未选定P4info或bin文件!';
                             return;
@@ -667,7 +738,7 @@
 
                         let accessToken = localStorage.getItem('accessToken');
 
-                        fetch(serverAddr + '/auth/pipeconf', {
+                        fetch(`${serverAddr}/auth/pipeconf?hostId=${selectedDevice.value}`, {
                             method: 'POST',
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
@@ -742,6 +813,10 @@
                 };
 
                 const submitTableEntry = async (tableId) => {
+                    if (!selectedDevice.value) {
+                        insertTableEntryMsg.value = '请先选择设备!';
+                        return;
+                    }
                     try {
                         const table = p4infoJson.value.tables.find(t => t.preamble.id === tableId);
                         const tableName = table.preamble.name;
@@ -761,7 +836,7 @@
                         console.log('添加的表项:', JSON.stringify(entry, null, 2));
                         let accessToken = localStorage.getItem('accessToken');
 
-                        fetch(serverAddr + '/auth/tableEntryExact', {
+                        fetch(`${serverAddr}/auth/tableEntryExact?hostId=${selectedDevice.value}`, {
                             method: 'POST',
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
@@ -889,9 +964,10 @@
                 };
 
                 const fetchTableEntries = async (tableName) => {
+                    if (!selectedDevice.value) return;
                     try {
                         let accessToken = localStorage.getItem('accessToken');
-                        const response = await fetch(`${serverAddr}/auth/tableEntries?name=${tableName}`, {
+                        const response = await fetch(`${serverAddr}/auth/tableEntries?name=${tableName}&hostId=${selectedDevice.value}`, {
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
                             }
@@ -912,11 +988,12 @@
                 };
 
                 const deleteTableEntry = async (tableName, entryId) => {
+                    if (!selectedDevice.value) return;
                     if (!confirm('确定要删除此表项吗？')) return;
 
                     try {
                         let accessToken = localStorage.getItem('accessToken');
-                        const response = await fetch(`${serverAddr}/auth/tableEntry?tableName=${tableName}&entryId=${entryId}`, {
+                        const response = await fetch(`${serverAddr}/auth/tableEntry?tableName=${tableName}&entryId=${entryId}&hostId=${selectedDevice.value}`, {
                             method: 'DELETE',
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
@@ -940,9 +1017,13 @@
                 };
 
                 const fetchP4Info = async () => {
+                    if (!selectedDevice.value) {
+                        p4infoJson.value = null;
+                        return;
+                    }
                     try {
                         let accessToken = localStorage.getItem('accessToken');
-                        const response = await fetch(`${serverAddr}/auth/p4info`, {
+                        const response = await fetch(`${serverAddr}/auth/p4info?hostId=${selectedDevice.value}`, {
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
                             }
@@ -976,9 +1057,14 @@
                 };
 
                 const fetchPortStatus = async () => {
+                    if (!selectedStatusDevice.value) {
+                        portStatus.value = [];
+                        return;
+                    }
+
                     try {
                         let accessToken = localStorage.getItem('accessToken');
-                        const response = await fetch(`${serverAddr}/auth/portsInfo`, {
+                        const response = await fetch(`${serverAddr}/auth/portsInfo?hostId=${selectedStatusDevice.value}`, {
                             headers: {
                                 'Authorization': `Bearer ${accessToken}`
                             }
@@ -995,6 +1081,7 @@
                         }
                     } catch (error) {
                         console.error('Error fetching port status:', error);
+                        portStatus.value = [];
                     }
                 };
 
@@ -1016,16 +1103,16 @@
 
                 const renderTopology = () => {
                     if (!topoData.value) return;
-                    
+
                     const container = document.getElementById('topology-container');
-                    
+
                     // 准备节点数据
                     const nodes = topoData.value.hosts.map(host => ({
                         id: `h${host.id}`,
                         label: `Host ${host.id}`,
                         shape: 'box'
                     }));
-                    
+
                     // 准备边数据
                     const edges = topoData.value.links.map(link => {
                         const [from, to] = link;
@@ -1035,12 +1122,12 @@
                             label: `${from} → ${to}`
                         };
                     });
-                    
+
                     const data = {
                         nodes: new vis.DataSet(nodes),
                         edges: new vis.DataSet(edges)
                     };
-                    
+
                     const options = {
                         physics: {
                             enabled: true,
@@ -1059,7 +1146,7 @@
                             }
                         }
                     };
-                    
+
                     network.value = new vis.Network(container, data, options);
                 };
 
@@ -1069,13 +1156,44 @@
                     }
                 };
 
+                const fetchDeviceList = async () => {
+                    try {
+                        let accessToken = localStorage.getItem('accessToken');
+                        const response = await fetch(`${serverAddr}/auth/hosts`, {
+                            headers: {
+                                'Authorization': `Bearer ${accessToken}`
+                            }
+                        });
+
+                        if (response.status === 401) {
+                            await checkTokens();
+                            return fetchDeviceList();
+                        }
+
+                        if (response.ok) {
+                            const data = await response.json();
+                            deviceList.value = data;
+                            // 如果当前没有选中设备且有可用设备，自动选择第一个
+                            if (!selectedDevice.value && data.length > 0) {
+                                selectedDevice.value = data[0];
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error fetching device list:', error);
+                    }
+                };
+
                 const switchPage = (page) => {
                     currentPage.value = page;
                     if (page === 'device') {
-                        fetchPortStatus();
+                        fetchDeviceList();
+                        if (selectedStatusDevice.value) {
+                            fetchPortStatus();
+                        }
                     } else if (page === 'p4config') {
                         fetchFileList();
                         fetchP4Info();
+                        fetchDeviceList();
                     } else if (page === 'topology') {
                         if (topoData.value) {
                             renderTopology();
@@ -1119,7 +1237,11 @@
                     ws,
                     wsReconnectAttempts,
                     handleTopoFileUpload,
-                    refreshTopology
+                    refreshTopology,
+                    selectedDevice,
+                    selectedStatusDevice,
+                    deviceList,
+                    fetchDeviceList
                 };
             }
         });
